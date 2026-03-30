@@ -1,10 +1,9 @@
 import streamlit as st
-from datetime import time
+from datetime import date, time
 from pawpal_system import Owner, Pet, Task, Priority, Scheduler
 
 st.set_page_config(page_title="PawPal+", page_icon="🐾", layout="centered")
 
-# Only create the Owner once — reuse it on every rerun
 if "owner" not in st.session_state:
     st.session_state.owner = Owner(name="", available_minutes_per_day=480)
 
@@ -36,8 +35,7 @@ with col2:
     species = st.selectbox("Species", ["dog", "cat", "other"])
 
 if st.button("Add pet"):
-    new_pet = Pet(name=pet_name, species=species)
-    owner.add_pet(new_pet)
+    owner.add_pet(Pet(name=pet_name, species=species))
     st.success(f"{pet_name} the {species} added!")
 
 if owner.pets:
@@ -55,29 +53,40 @@ else:
     selected_pet_name = st.selectbox("Assign to pet", pet_names)
     selected_pet = next(p for p in owner.pets if p.name == selected_pet_name)
 
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4 = st.columns(4)
     with col1:
         task_title = st.text_input("Task title", value="Morning walk")
     with col2:
-        duration = st.number_input("Duration (minutes)", min_value=1, max_value=240, value=20)
+        duration = st.number_input("Duration (min)", min_value=1, max_value=240, value=20)
     with col3:
         priority = st.selectbox("Priority", ["low", "medium", "high"], index=2)
+    with col4:
+        recurring = st.selectbox("Recurring", ["none", "daily", "weekly"])
 
     if st.button("Add task"):
-        new_task = Task(
+        selected_pet.add_task(Task(
             title=task_title,
             duration_minutes=int(duration),
             priority=Priority(priority),
-        )
-        selected_pet.add_task(new_task)
+            recurring=None if recurring == "none" else recurring,
+        ))
         st.success(f"Task '{task_title}' added to {selected_pet_name}.")
 
-    # Show current tasks per pet
+    # Show pending tasks per pet with mark-complete button
     for pet in owner.pets:
         pending = pet.get_pending_tasks()
         if pending:
-            st.markdown(f"**{pet.name}'s tasks:**")
-            st.table([{"title": t.title, "duration": t.duration_minutes, "priority": t.priority.value} for t in pending])
+            st.markdown(f"**{pet.name}'s pending tasks:**")
+            for i, t in enumerate(pending):
+                col_a, col_b = st.columns([4, 1])
+                with col_a:
+                    st.write(f"{t.title} — {t.duration_minutes} min | {t.priority.value} priority"
+                             + (f" | repeats {t.recurring}" if t.recurring else ""))
+                with col_b:
+                    if st.button("Done", key=f"done_{pet.name}_{i}"):
+                        t.mark_completed()
+                        pet.refresh_recurring_tasks(date.today())
+                        st.rerun()
 
 st.divider()
 
@@ -101,10 +110,32 @@ if st.button("Generate schedule"):
             day_start=day_start,
             day_end=day_end,
         )
-        st.text(scheduler.explain_plan(schedule))
 
-        # Conflict check
+        # Scheduled tasks table (sorted by time)
+        sorted_entries = scheduler.sort_by_time(schedule)
+        if sorted_entries:
+            st.success(f"Scheduled {len(sorted_entries)} task(s) for today.")
+            st.table([{
+                "Time": f"{e.start.strftime('%I:%M %p')} – {e.end.strftime('%I:%M %p')}",
+                "Task": e.task.title,
+                "Priority": e.task.priority.value,
+                "Duration": f"{e.task.duration_minutes} min",
+            } for e in sorted_entries])
+        else:
+            st.warning("No tasks could be scheduled in this time window.")
+
+        # Skipped tasks
+        if schedule.omitted_tasks:
+            st.warning(f"{len(schedule.omitted_tasks)} task(s) didn't fit and were skipped:")
+            for t in schedule.omitted_tasks:
+                st.write(f"  - {t.title} ({t.duration_minutes} min)")
+
+        # Schedule overlap conflicts
+        overlap_conflicts = scheduler.detect_schedule_conflicts(schedule)
+        for conflict in overlap_conflicts:
+            st.error(f"Time conflict: {conflict}")
+
+        # Per-pet overload / duplicate warnings
         for pet in owner.pets:
-            issues = scheduler.detect_conflicts(pet)
-            for issue in issues:
-                st.warning(issue)
+            for issue in scheduler.detect_conflicts(pet):
+                st.warning(f"{pet.name}: {issue}")

@@ -1,0 +1,42 @@
+classDiagram
+    class Owner {
+        - name: str
+        - available_minutes_per_day: int
+        - pets: list[Pet]
+        + add_pet(pet: Pet)
+        + get_all_tasks() -> list[Task]
+    }
+
+    class Pet {
+        - name: str
+        - species: str
+        - tasks: list[Task]
+        + add_task(task: Task)
+        + get_pending_tasks() -> list[Task]
+        + refresh_recurring_tasks(today: date)
+    }
+
+    class Task {
+        - title: str
+        - duration_minutes: int
+        - priority: Priority
+        - completed: bool
+        - recurring: str
+        - notes: str
+        - due_date: date
+        + mark_completed()
+        + is_due_today(today: date) -> bool
+        + next_occurrence() -> Task
+    }
+
+    class Scheduler {
+        + build_daily_schedule(owner: Owner, pet: Pet, day_start: time, day_end: time) -> ScheduleResult
+        + detect_conflicts(pet: Pet) -> list[str]
+        + detect_schedule_conflicts(schedule: ScheduleResult) -> list[str]
+        + sort_by_time(schedule: ScheduleResult) -> list[ScheduleEntry]
+        + filter_tasks(owner: Owner, pet_name: Optional[str], completed: Optional[bool]) -> list[Task]
+        + explain_plan(schedule: ScheduleResult) -> str
+    }
+
+    Owner "1" -- "*" Pet : owns
+    Pet "1" -- "*" Task : has
