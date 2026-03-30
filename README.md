@@ -22,6 +22,15 @@ Your final app should:
 - Display the plan clearly (and ideally explain the reasoning)
 - Include tests for the most important scheduling behaviors
 
+## Smarter Scheduling
+
+The scheduler includes several features beyond a basic task list:
+
+- **Priority + duration sorting** — high-priority tasks go first; ties are broken by duration (shorter tasks scheduled earlier to fit more into the day)
+- **Filtering** — tasks can be filtered by pet name or completion status
+- **Recurring tasks** — daily and weekly tasks auto-generate their next occurrence when marked complete, using `timedelta` to calculate the next due date
+- **Conflict detection** — the scheduler checks for overlapping time windows in a built schedule and returns warning messages instead of crashing
+
 ## Getting started
 
 ### Setup

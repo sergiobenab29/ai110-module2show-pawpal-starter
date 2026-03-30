@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, time, timedelta
+from datetime import date, datetime, time, timedelta
 from enum import Enum
 from typing import List, Optional
 
@@ -23,18 +23,34 @@ class Task:
     completed: bool = False
     recurring: Optional[str] = None  # "daily", "weekly", or None
     notes: Optional[str] = None
+    due_date: Optional[date] = field(default_factory=date.today)
 
     def mark_completed(self) -> None:
         """Mark this task as done."""
         self.completed = True
 
-    def is_due_today(self, date: datetime) -> bool:
-        """Return True if this task should appear in today's schedule."""
-        if self.recurring in (None, "daily"):
+    def is_due_today(self, today: date) -> bool:
+        """Return True if this task's due date is today or earlier."""
+        if self.due_date is None:
             return True
-        if self.recurring == "weekly":
-            return True
-        return False
+        return self.due_date <= today
+
+    def next_occurrence(self) -> Optional[Task]:
+        """Return a fresh copy of this task scheduled for its next due date, or None if not recurring."""
+        if self.recurring == "daily":
+            next_due = (self.due_date or date.today()) + timedelta(days=1)
+        elif self.recurring == "weekly":
+            next_due = (self.due_date or date.today()) + timedelta(weeks=1)
+        else:
+            return None
+        return Task(
+            title=self.title,
+            duration_minutes=self.duration_minutes,
+            priority=self.priority,
+            recurring=self.recurring,
+            notes=self.notes,
+            due_date=next_due,
+        )
 
 
 @dataclass
@@ -50,6 +66,19 @@ class Pet:
     def get_pending_tasks(self) -> List[Task]:
         """Return only tasks that have not been completed yet."""
         return [t for t in self.tasks if not t.completed]
+
+    def refresh_recurring_tasks(self, today: date) -> None:
+        """For every completed recurring task, add the next occurrence if not already scheduled."""
+        new_tasks = []
+        for task in self.tasks:
+            if task.completed and task.recurring:
+                next_task = task.next_occurrence()
+                if next_task and not any(
+                    t.title == next_task.title and t.due_date == next_task.due_date
+                    for t in self.tasks
+                ):
+                    new_tasks.append(next_task)
+        self.tasks.extend(new_tasks)
 
 
 @dataclass
@@ -100,7 +129,8 @@ class Scheduler:
         all_tasks: List[Task] = []
         for p in owner.pets:
             all_tasks.extend(p.get_pending_tasks())
-        all_tasks.sort(key=lambda t: _PRIORITY_ORDER[t.priority])
+        # Sort by priority first, then by duration (shorter tasks first to fit more in)
+        all_tasks.sort(key=lambda t: (_PRIORITY_ORDER[t.priority], t.duration_minutes))
 
         # Calculate available time window in minutes
         start_dt = datetime.combine(datetime.today(), day_start)
@@ -151,6 +181,32 @@ class Scheduler:
                 seen.add(title)
 
         return conflicts
+
+    @staticmethod
+    def detect_schedule_conflicts(schedule: ScheduleResult) -> List[str]:
+        """Return warnings for any entries whose time windows overlap in the built schedule."""
+        sorted_entries = sorted(schedule.entries, key=lambda e: e.start)
+        return [
+            f"Conflict: '{a.task.title}' ends at {a.end.strftime('%I:%M %p')} "
+            f"but '{b.task.title}' starts at {b.start.strftime('%I:%M %p')}."
+            for a, b in zip(sorted_entries, sorted_entries[1:])
+            if a.end > b.start
+        ]
+
+    @staticmethod
+    def sort_by_time(schedule: ScheduleResult) -> List[ScheduleEntry]:
+        """Return schedule entries sorted by start time."""
+        return sorted(schedule.entries, key=lambda e: e.start)
+
+    @staticmethod
+    def filter_tasks(owner: Owner, pet_name: Optional[str] = None, completed: Optional[bool] = None) -> List[Task]:
+        """Filter tasks across all pets by pet name and/or completion status."""
+        tasks = owner.get_all_tasks()
+        if pet_name is not None:
+            tasks = [t for p in owner.pets if p.name == pet_name for t in p.tasks]
+        if completed is not None:
+            tasks = [t for t in tasks if t.completed == completed]
+        return tasks
 
     @staticmethod
     def explain_plan(schedule: ScheduleResult) -> str:
