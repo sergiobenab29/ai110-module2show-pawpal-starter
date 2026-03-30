@@ -31,6 +31,21 @@ The scheduler includes several features beyond a basic task list:
 - **Recurring tasks** — daily and weekly tasks auto-generate their next occurrence when marked complete, using `timedelta` to calculate the next due date
 - **Conflict detection** — the scheduler checks for overlapping time windows in a built schedule and returns warning messages instead of crashing
 
+## Testing PawPal+
+
+Run the full test suite with:
+
+```bash
+python3 -m pytest tests/ -v
+```
+
+The tests cover 12 behaviors across two categories:
+
+- **Happy paths** — task completion, adding tasks, priority ordering, daily recurrence, and filtering by status
+- **Edge cases** — empty pet schedule, tasks too long to fit, overlapping time conflicts, non-recurring tasks, and owner with no pets
+
+Confidence level: ★★★★☆ — the core scheduling logic and edge cases are well covered. The main area not fully tested is the Streamlit UI layer.
+
 ## Getting started
 
 ### Setup
